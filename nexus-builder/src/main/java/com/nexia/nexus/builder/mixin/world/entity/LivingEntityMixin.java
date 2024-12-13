@@ -15,7 +15,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -28,6 +27,7 @@ import net.minecraft.world.item.ShieldItem;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
@@ -52,8 +52,6 @@ public abstract class LivingEntityMixin extends Entity implements LivingEntityEx
     @Shadow public abstract double getAttributeValue(Attribute attribute);
 
     @Shadow public abstract ItemStack getBlockingItem();
-
-    @Shadow public abstract boolean addEffect(MobEffectInstance mobEffectInstance);
 
     @Shadow public abstract ItemStack getMainHandItem();
 
@@ -238,5 +236,43 @@ public abstract class LivingEntityMixin extends Entity implements LivingEntityEx
         if (!(this.getMainHandItem().getItem() instanceof AxeItem)) {
             this.level.playSound(null, new BlockPos(this.position()), SoundEvents.SHIELD_BLOCK, SoundSource.PLAYERS, 1.0F, 0.8F + this.level.random.nextFloat() * 0.4F);
         }
+    }
+
+    // https://github.com/Blumbo/LessAnnoyingFire/blob/1.19.4/src/main/java/net/blumbo/lessannoyingfire/mixin/LivingEntityMixin.java
+    // Less Annoying Fire
+
+    @Shadow private DamageSource lastDamageSource;
+
+    @Shadow protected abstract void markHurt();
+
+    @Unique
+    DamageSource damageSource;
+
+    @Inject(method = "hurt", at = @At(value = "FIELD", ordinal = 0, opcode = Opcodes.GETFIELD, target = "Lnet/minecraft/world/entity/LivingEntity;invulnerableTime:I"))
+    private void setSource1(DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
+        damageSource = source;
+    }
+
+    @Redirect(method = "hurt", at = @At(value = "FIELD", ordinal = 0, opcode = Opcodes.GETFIELD, target = "Lnet/minecraft/world/entity/LivingEntity;invulnerableTime:I"))
+    private int getInvulnerabilityTicks(LivingEntity instance) {
+        // Make fire caused invulnerability ticks irrelevant if damage comes from an entity
+        if (fireDamageSource(lastDamageSource) && damageSource.getDirectEntity() != null) return 0;
+        return invulnerableTime;
+    }
+
+    @Inject(method = "hurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;markHurt()V"))
+    private void setSource2(DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
+        damageSource = source;
+    }
+
+    @Redirect(method = "hurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;markHurt()V"))
+    private void velocityUpdateCondition(LivingEntity instance) {
+        // Prevent fire from messing up movement
+        if (!fireDamageSource(damageSource)) markHurt();
+    }
+
+    @Unique
+    private static boolean fireDamageSource(DamageSource damageSource) {
+        return damageSource == DamageSource.ON_FIRE || damageSource == DamageSource.IN_FIRE;
     }
 }

@@ -14,6 +14,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
 @Mixin(Explosion.class)
@@ -48,5 +49,13 @@ public abstract class ExplosionMixin {
             }
         }
         return false;
+    }
+
+    //https://github.com/Blumbo/LessAnnoyingFire/blob/1.19.4/src/main/java/net/blumbo/lessannoyingfire/mixin/ExplosionMixin.java
+    // Less Annoying Fire
+
+    @ModifyArg(method = "finalizeExplosion", at = @At(value = "INVOKE", target = "Ljava/util/Random;nextInt(I)I"))
+    private int reduceFireOdds(int bound) {
+        return bound * 2;
     }
 }
